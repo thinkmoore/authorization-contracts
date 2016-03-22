@@ -654,9 +654,9 @@ evaluted left-to-right.)
                                                                           ordered-ress
                                                                           var))
                                             (auth-vars auth)))])
-                         (if (and (contract? condition-result) (not (flat-contract? condition-result)))
-                               (contract-projection condition-result)
-                               (signal-auth val
+                         (if (contract? condition-result)
+                             (contract-projection condition-result)
+                             (signal-auth val
                                             blame
                                             condition-result
                                             #,@(map (λ (x) #`(list '#,x 
