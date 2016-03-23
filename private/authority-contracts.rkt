@@ -216,13 +216,18 @@
                   (format "~a ⋡ ~a @ ~a~n" l r ll)))]
               [#f (void)])
             (define wrapper
-              (make-keyword-procedure
-               (λ (kwds kwd-args . other-args)
-                 (with-continuation-mark contract-continuation-mark-key blame
-                   (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) kwd-args other-args)))
-               (λ args
-                 (with-continuation-mark contract-continuation-mark-key blame
-                   (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) #f args)))))
+              (let-values ([(req acc) (procedure-keywords proc)])
+                (if (empty? acc)
+                    (λ args
+                       (with-continuation-mark contract-continuation-mark-key blame
+                         (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) #f args)))
+                    (make-keyword-procedure
+                     (λ (kwds kwd-args . other-args)
+                       (with-continuation-mark contract-continuation-mark-key blame
+                         (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) kwd-args other-args)))
+                     (λ args
+                       (with-continuation-mark contract-continuation-mark-key blame
+                         (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) #f args)))))))
             (define (add-lifetime-delegations delegations)
               (map (match-lambda
                      [(labeled r l)
