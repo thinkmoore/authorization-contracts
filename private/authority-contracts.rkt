@@ -115,11 +115,31 @@
   #:property prop:authority-contract #t
   #:property prop:contract
   (build-contract-property
+   #:name (λ (ctc) (authority-region/c-name ctc))
+   #:first-order (λ (ctc) procedure?)
+   #:late-neg-projection
+   (λ (ctc)
+     (λ (blame)
+       (λ (val neg)
+         (with-continuation-mark contract-continuation-mark-key blame
+           (begin
+             (unless (procedure? val)
+               (raise-blame-error
+                blame val
+                '(expected: "~a" given: "~e")
+                "procedure" val))
+             ((authority-region/c-combinator ctc) (blame-swap (blame-replace-negative blame neg)) val))))))))
+
+#;
+(struct authority-region/c (name combinator)
+  #:property prop:authority-contract #t
+  #:property prop:contract
+  (build-contract-property
    #:name
    (λ (ctc) (authority-region/c-name ctc))
    #:first-order
    (λ (ctc) (λ (val) (procedure? val)))
-   #:projection
+   #:late-neg-projection
    (λ (ctc)
      (λ (blame)
        (λ (val)
