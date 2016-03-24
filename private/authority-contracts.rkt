@@ -121,37 +121,15 @@
    (λ (ctc)
      (λ (blame)
        (λ (val neg)
-         (with-continuation-mark contract-continuation-mark-key blame
-           (begin
-             (unless (procedure? val)
-               (raise-blame-error
-                blame val
-                '(expected: "~a" given: "~e")
-                "procedure" val))
-             ((authority-region/c-combinator ctc) (blame-swap (blame-replace-negative blame neg)) val))))))))
-
-#;
-(struct authority-region/c (name combinator)
-  #:property prop:authority-contract #t
-  #:property prop:contract
-  (build-contract-property
-   #:name
-   (λ (ctc) (authority-region/c-name ctc))
-   #:first-order
-   (λ (ctc) (λ (val) (procedure? val)))
-   #:late-neg-projection
-   (λ (ctc)
-     (λ (blame)
-       (λ (val)
-         (with-continuation-mark contract-continuation-mark-key blame
-           (begin
-             (unless (procedure? val)
-               (raise-blame-error
-                blame val
-                '(expected: "~a" given: "~e")
-                "procedure" val))
-             (let ([comb (authority-region/c-combinator ctc)])
-               (comb (blame-swap blame) val)))))))))
+         (let ([full-blame (blame-replace-negative blame neg)])
+           (with-continuation-mark contract-continuation-mark-key full-blame
+             (begin
+               (unless (procedure? val)
+                 (raise-blame-error
+                  full-blame val
+                  '(expected: "~a" given: "~e")
+                  "procedure" val))
+               ((authority-region/c-combinator ctc) (blame-swap full-blame) val)))))))))
 
 (define (authority-contracts #:search [search-list #f] . hooks)
   (define delegations (make-delegation-set))
@@ -219,15 +197,15 @@
               (let-values ([(req acc) (procedure-keywords proc)])
                 (if (empty? acc)
                     (λ args
-                       (with-continuation-mark contract-continuation-mark-key blame
-                         (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) #f args)))
+                         (with-continuation-mark contract-continuation-mark-key blame
+                           (do-region-no-keywords (mark-parameter-first principal-param) (mark-parameter-list delegation-param) args)))
                     (make-keyword-procedure
                      (λ (kwds kwd-args . other-args)
                        (with-continuation-mark contract-continuation-mark-key blame
                          (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) kwd-args other-args)))
                      (λ args
                        (with-continuation-mark contract-continuation-mark-key blame
-                         (do-region (mark-parameter-first principal-param) (mark-parameter-list delegation-param) #f args)))))))
+                         (do-region-no-keywords (mark-parameter-first principal-param) (mark-parameter-list delegation-param) args)))))))
             (define (add-lifetime-delegations delegations)
               (map (match-lambda
                      [(labeled r l)
@@ -352,6 +330,80 @@
                          (apply values result-handler other-args)]
                         [else
                          (apply values other-args)])))))
+            (define (do-region-no-keywords principal scoped-delegations other-args)
+              (let*-values ([(check to-add to-remove to-scope to-lifetime
+                                    set-principal new-principal on-return)
+                             (apply-actions-values
+                              (apply apply-authority-region
+                                     (current-delegations scoped-delegations)
+                                     principal
+                                     closure-delegations
+                                     closure-principal
+                                     (map (λ (arg) (if (authority-closure? arg) (authority-closure-accessor arg) #f))
+                                          other-args)
+                                     hook-args))])
+                (match check
+                  [(labeled (actsfor l r) ll)
+                   (unless (acts-for? (current-delegations scoped-delegations) l r ll #:search search-list)
+                     (raise-blame-error
+                      blame proc
+                      (format "~a ⋡ ~a @ ~a~n" l r ll)))]
+                  [#f (void)])
+                (auth-update-delegations to-add to-remove)
+                (add-lifetime-delegations to-lifetime)
+                (let ([result-handler
+                       (if on-return
+                           (λ results
+                             (with-continuation-mark contract-continuation-mark-key blame
+                               (let-values ([(principal) (mark-parameter-first principal-param)]
+                                            [(scoped-delegations) (mark-parameter-list delegation-param)]
+                                            [(to-add to-remove to-lifetime)
+                                             (return-actions-values
+                                              (on-return (map (λ (res) (if (authority-closure? res) (authority-closure-accessor res) #f)) results)))])
+                                 (auth-update-delegations to-add to-remove)
+                                 (add-lifetime-delegations to-lifetime)
+                                 (apply values results))))
+                           #f)]
+                      [new-scoped-delegations
+                       (if (not (empty? to-scope))
+                           (apply add-delegations (first scoped-delegations) to-scope) ; XXX shouldn't need this
+                           #f)])
+                  (when set-principal
+                    (mark-parameter-set principal-param set-principal))
+                  (cond
+                    [(and new-principal new-scoped-delegations result-handler)
+                     (apply values
+                            result-handler
+                            'mark (mark-parameter-key principal-param) (box new-principal)
+                            'mark (mark-parameter-key delegation-param) (box new-scoped-delegations)
+                            other-args)]
+                    [(and new-principal new-scoped-delegations)
+                     (apply values
+                            'mark (mark-parameter-key principal-param) (box new-principal)
+                            'mark (mark-parameter-key delegation-param) (box new-scoped-delegations)
+                            other-args)]
+                    [(and new-principal result-handler)
+                     (apply values
+                            result-handler
+                            'mark (mark-parameter-key principal-param) (box new-principal)
+                            other-args)]
+                    [(and new-scoped-delegations result-handler)
+                     (apply values
+                            result-handler
+                            'mark (mark-parameter-key delegation-param) (box new-scoped-delegations)
+                            other-args)]
+                    [new-principal
+                     (apply values
+                            'mark (mark-parameter-key principal-param) (box new-principal)
+                            other-args)]
+                    [new-scoped-delegations
+                     (apply values
+                            'mark (mark-parameter-key delegation-param) (box new-scoped-delegations)
+                            other-args)]
+                    [result-handler
+                     (apply values result-handler other-args)]
+                    [else
+                     (apply values other-args)]))))
             (chaperone-procedure proc wrapper prop closure-authority prop:authority-closure closure-authority))))))
   
   (let* ([props
