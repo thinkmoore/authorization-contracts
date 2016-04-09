@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require racket/contract/private/arrow
+(require racket/contract/private/arrow-common
          racket/contract/private/prop
          racket/contract/private/guts
          racket/contract/private/opt
