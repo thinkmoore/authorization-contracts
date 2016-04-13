@@ -131,7 +131,7 @@
                   "procedure" val))
                ((authority-region/c-combinator ctc) (blame-swap full-blame) val)))))))))
 
-(define (authority-contracts #:search [search-list #f] . hooks)
+(define (authority-contracts #:search [search-list #f] #:default-principal [default-principal ⊤] . hooks)
   (define delegations (make-delegation-set))
   (define lifetime-delegations (make-weak-hash))
 
@@ -413,7 +413,7 @@
                     (make-impersonator-property n))
                   (list prop:authority-region authority-region? authority-region-accessor)])
                hooks)]
-         [principal-param (make-mark-parameter ⊤)]
+         [principal-param (make-mark-parameter default-principal)]
          [delegation-param (make-mark-parameter (make-delegation-set))]
          [combinators (map (λ (prop hooks)
                              (match (cons prop hooks)
@@ -499,14 +499,35 @@
 
 (define-syntax (define-authority-contracts stx)
   (syntax-case stx ()
+    [(define-authority-contracts #:default-principal default-principal #:search s
+       (x r ...) ...)
+     #`(define-values #,(make-names #'(x ...))
+         (authority-contracts
+          #:search s
+          #:default-principal default-principal
+          #,@(map (λ (s) (authority-spec s)) (syntax->list #'((x r ...) ...)))))]
+    [(define-authority-contracts #:search s #:default-principal default-principal
+       (x r ...) ...)
+     #`(define-values #,(make-names #'(x ...))
+         (authority-contracts
+          #:search s
+          #:default-principal default-principal
+          #,@(map (λ (s) (authority-spec s)) (syntax->list #'((x r ...) ...)))))]
     [(define-authority-contracts #:search s
        (x r ...) ...)
      #`(define-values #,(make-names #'(x ...))
          (authority-contracts
           #:search s
           #,@(map (λ (s) (authority-spec s)) (syntax->list #'((x r ...) ...)))))]
+    [(define-authority-contracts #:default-principal default-principal
+       (x r ...) ...)
+     #`(define-values #,(make-names #'(x ...))
+         (authority-contracts
+          #:search #f
+          #:default-principal default-principal
+          #,@(map (λ (s) (authority-spec s)) (syntax->list #'((x r ...) ...)))))]
     [(define-authority-contracts spec ...)
-     #'(define-authority-contracts #:search #f spec ...)]))
+     #'(define-authority-contracts #:search #f #:default-principal ⊤ spec ...)]))
 
 (module+ test
   (require rackunit)
