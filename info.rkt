@@ -1,5 +1,6 @@
 #lang info
 
+(define name "authorization-contracts")
 (define collection "authorization-contracts")
 (define version "1.0")
 (define pkg-authors '("Scott Moore"
